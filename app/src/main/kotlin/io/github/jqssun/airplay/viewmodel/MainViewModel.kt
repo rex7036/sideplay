@@ -100,6 +100,9 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     private val _requirePin = MutableStateFlow(prefs.getBoolean(Prefs.REQUIRE_PIN, Prefs.DEF_REQUIRE_PIN))
     val requirePin: StateFlow<Boolean> = _requirePin.asStateFlow()
 
+    private val _currentLanguage = MutableStateFlow(prefs.getString(Prefs.APP_LANGUAGE, Prefs.DEF_APP_LANGUAGE) ?: Prefs.DEF_APP_LANGUAGE)
+    val currentLanguage: StateFlow<String> = _currentLanguage.asStateFlow()
+
     private val _keepScreenOn = MutableStateFlow(prefs.getBoolean(Prefs.KEEP_SCREEN_ON, Prefs.DEF_KEEP_SCREEN_ON))
     val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
 
@@ -204,6 +207,10 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     fun setBootAutoStart(v: Boolean) { _bootAutoStart.value = v; prefs.edit().putBoolean(Prefs.BOOT_AUTO_START, v).apply() }
     fun setH265Enabled(v: Boolean) { _h265Enabled.value = v; prefs.edit().putBoolean(Prefs.H265_ENABLED, v).apply(); _applyByServerRestart() }
     fun setRequirePin(v: Boolean) { _requirePin.value = v; prefs.edit().putBoolean(Prefs.REQUIRE_PIN, v).apply(); _applyByServerRestart() }
+    fun setLanguage(languageCode: String) {
+        _currentLanguage.value = languageCode
+        prefs.edit().putString(Prefs.APP_LANGUAGE, languageCode).apply()
+    }
 
     // service binding
     fun bindService(svc: AirPlayService) {

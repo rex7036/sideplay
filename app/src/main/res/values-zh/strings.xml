@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sideplay</string>
+
+    <!-- Notification -->
+    <string name="notification_channel">AirPlay 服务</string>
+    <string name="notification_title">Sideplay 正在运行</string>
+    <string name="notification_text">正在接受 AirPlay 连接</string>
+    <string name="notification_pin_title">需要 AirPlay PIN 码</string>
+    <string name="notification_pin_text">PIN 码: %1$s</string>
+
+    <!-- Tabs -->
+
+    <!-- Overview -->
+
+    <!-- Content descriptions -->
+
+    <!-- Video download -->
+
+    <!-- Player gestures -->
+
+    <!-- Player controls -->
+
+    <!-- Dialogs -->
+
+    <!-- Logs screen -->
+
+    <!-- Settings sections -->
+
+    <!-- Settings: Server -->
+
+    <!-- Settings: Connection -->
+
+    <!-- Settings: Display -->
+
+    <!-- Settings: Decode -->
+
+    <!-- Settings: Developer -->
+
+    <!-- Debug overlay -->
+    <!-- TV UI -->
+    <string name="tv_idle_ready">%1$s 已就绪</string>
+    <string name="tv_idle_error">接收器未运行</string>
+    <string name="tv_retry">重试</string>
+    <string name="tv_idle_connecting">正在连接到 %1$s…</string>
+    <string name="tv_idle_steps_title">在此电视上显示您的 iPhone 或 iPad：</string>
+    <string name="tv_idle_step_1">在 iPhone 或 iPad 上打开控制中心</string>
+    <string name="tv_idle_step_2">轻点"屏幕镜像"</string>
+    <string name="tv_idle_step_3">选择 %1$s</string>
+    <string name="tv_idle_address">电视地址：%1$s</string>
+    <string name="tv_idle_allow_auto_open">允许 Sideplay 自动打开</string>
+    <string name="tv_idle_open_app_settings">打开 Sideplay 的设置</string>
+    <string name="tv_idle_overlay_steps">允许 Sideplay 自动打开：电视设置 → 应用 → 特殊应用权限 → 显示悬浮窗 → Sideplay</string>
+    <string name="tv_ts_overlay_adb">如果您的电视没有此设置，可以通过计算机授予一次权限：adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
+    <string name="tv_prompt_title">有设备正在连接</string>
+    <string name="tv_prompt_text">打开 Sideplay 以在电视上显示</string>
+    <string name="tv_prompt_channel">连接提示</string>
+    <string name="tv_idle_keep_open">保持 Sideplay 打开以接收画面</string>
+    <string name="tv_settings">设置</string>
+    <string name="tv_pin_title">在您的设备上输入此代码</string>
+    <string name="tv_mirroring_connected">设备已连接</string>
+    <string name="tv_disconnect_title">断开此设备的连接？</string>
+    <string name="tv_disconnect">断开连接</string>
+    <string name="tv_cancel">取消</string>
+    <string name="tv_video_loading">正在加载视频</string>
+    <string name="tv_audio_fallback_title">正在播放您设备上的音频</string>
+    <string name="tv_setting_name">电视名称</string>
+    <string name="tv_setting_pin">连接时需要验证码</string>
+    <string name="tv_setting_boot">电视开机时自动启动</string>
+    <string name="tv_setting_h265">使用 H.265 (HEVC)</string>
+    <string name="tv_setting_h265_desc">在相同带宽下提供更好的画质。如果镜像卡顿可关闭。</string>
+    <string name="tv_troubleshooting">故障排除</string>
+    <string name="tv_save">保存</string>
+    <string name="tv_ts_network">网络</string>
+    <string name="tv_ts_address">地址：%1$s，端口 %2$d</string>
+    <string name="tv_ts_address_unknown">地址：未连接到网络</string>
+    <string name="tv_ts_decoder">视频解码器</string>
+    <string name="tv_ts_decoder_none">未找到硬件视频解码器</string>
+    <string name="tv_ts_about">关于</string>
+    <string name="tv_ts_version">Sideplay %1$s</string>
+    <string name="tv_ts_license">基于 GPL-3.0 许可证的自由软件</string>
+    <string name="tv_ts_credits">基于 jqssun/android-airplay-server、UxPlay、playfair、libplist、OpenSSL 和 FFmpeg 构建。</string>
+    <string name="tv_ts_disclaimer">与 Apple Inc. 无关联。AirPlay 是 Apple Inc. 的商标。</string>
+    <string name="tv_ts_logs">最近的日志</string>
+    <string name="tv_firstrun_title">欢迎使用 Sideplay</string>
+    <string name="tv_firstrun_name">为此电视命名</string>
+    <string name="tv_firstrun_done">完成</string>
+
+    <!-- Language settings -->
+    <string name="tv_setting_language">语言</string>
+    <string name="tv_setting_language_desc">应用界面语言</string>
+    <string name="language_system">跟随系统</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">简体中文</string>
+</resources>

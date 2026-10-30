@@ -54,6 +54,7 @@ data class TvSettingsState(
     val requirePin: Boolean,
     val bootAutoStart: Boolean,
     val h265Enabled: Boolean,
+    val currentLanguage: String = "system",
 )
 
 data class TvTroubleshootingState(
@@ -71,13 +72,17 @@ fun TvSettingsScreen(
     onRequirePin: (Boolean) -> Unit,
     onBootAutoStart: (Boolean) -> Unit,
     onH265: (Boolean) -> Unit,
+    onLanguageChange: (String) -> Unit,
     onOpenTroubleshooting: () -> Unit,
     onBack: () -> Unit,
 ) {
     var renaming by remember { mutableStateOf(false) }
+    var selectingLanguage by remember { mutableStateOf(false) }
     val firstRow = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstRow.requestFocusUntilLanded() }
-    BackHandler(enabled = !renaming) { onBack() }
+    BackHandler(enabled = !renaming && !selectingLanguage) { onBack() }
+
+    val context = LocalContext.current
 
     // scrolls so rows keep their height on short screens; focus brings rows into view
     Column(
@@ -93,10 +98,29 @@ fun TvSettingsScreen(
         SwitchRow(stringResource(R.string.tv_setting_boot), "setting_boot", state.bootAutoStart, onBootAutoStart)
         SwitchRow(stringResource(R.string.tv_setting_h265), "setting_h265", state.h265Enabled, onH265,
             description = stringResource(R.string.tv_setting_h265_desc))
+        SettingRow(
+            stringResource(R.string.tv_setting_language),
+            "setting_language",
+            description = stringResource(R.string.tv_setting_language_desc),
+            onClick = { selectingLanguage = true }
+        ) {
+            Text(
+                io.github.jqssun.airplay.LanguageHelper.getLanguageDisplayName(context, state.currentLanguage),
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        }
         SettingRow(stringResource(R.string.tv_troubleshooting), "setting_troubleshooting", onClick = onOpenTroubleshooting)
     }
 
     if (renaming) RenameDialog(state.serverName, onDismiss = { renaming = false }, onSave = { renaming = false; onRename(it) })
+    if (selectingLanguage) LanguageDialog(
+        currentLanguage = state.currentLanguage,
+        onDismiss = { selectingLanguage = false },
+        onSelect = { lang ->
+            selectingLanguage = false
+            onLanguageChange(lang)
+        }
+    )
 }
 
 @Composable
@@ -151,6 +175,46 @@ private fun RenameDialog(current: String, onDismiss: () -> Unit, onSave: (String
         },
         dismissButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.tvFocus()) { Text(stringResource(R.string.tv_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun LanguageDialog(currentLanguage: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    val context = LocalContext.current
+    val languages = listOf(
+        io.github.jqssun.airplay.Prefs.LANG_SYSTEM to stringResource(R.string.language_system),
+        io.github.jqssun.airplay.Prefs.LANG_ENGLISH to stringResource(R.string.language_english),
+        io.github.jqssun.airplay.Prefs.LANG_CHINESE to stringResource(R.string.language_chinese),
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.tv_setting_language)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                languages.forEach { (code, name) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .tvFocus(RoundedCornerShape(8.dp))
+                            .clickable { onSelect(code) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (code == currentLanguage) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.tvFocus()) {
+                Text(stringResource(R.string.tv_cancel))
+            }
         },
     )
 }

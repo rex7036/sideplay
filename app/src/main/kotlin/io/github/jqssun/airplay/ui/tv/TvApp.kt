@@ -167,12 +167,18 @@ fun TvApp(
             settings = {
                 val requirePin by viewModel.requirePin.collectAsState()
                 val boot by viewModel.bootAutoStart.collectAsState()
+                val language by viewModel.currentLanguage.collectAsState()
                 TvSettingsScreen(
-                    state = TvSettingsState(serverName, requirePin, boot, h265),
+                    state = TvSettingsState(serverName, requirePin, boot, h265, language),
                     onRename = { viewModel.setServerName(it) },
                     onRequirePin = { viewModel.setRequirePin(it) },
                     onBootAutoStart = { viewModel.setBootAutoStart(it) },
                     onH265 = { viewModel.setH265Enabled(it) },
+                    onLanguageChange = { newLang ->
+                        viewModel.setLanguage(newLang)
+                        // Recreate activity to apply language change
+                        (context as? android.app.Activity)?.recreate()
+                    },
                     onOpenTroubleshooting = { route = TvRoute.TROUBLESHOOTING },
                     onBack = { route = TvRoute.HOME },
                 )

@@ -3,6 +3,7 @@ package io.github.jqssun.airplay
 import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
@@ -61,6 +62,12 @@ class MainActivity : ComponentActivity() {
     private val notifPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* granted or not, service works either way */ }
+
+    override fun attachBaseContext(newBase: Context) {
+        val languageCode = LanguageHelper.getCurrentLanguage(newBase)
+        val context = LanguageHelper.applyLanguage(newBase, languageCode)
+        super.attachBaseContext(context)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
