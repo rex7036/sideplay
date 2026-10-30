@@ -145,7 +145,7 @@ private:
     }
 
     static constexpr int MIN_CUSHION_MS = 0;             // algorithm already enforces effective floor
-    static constexpr int MAX_CUSHION_MS = 1000;
+    static constexpr int MAX_CUSHION_MS = 300;           // reduced from 1000ms to lower max latency
     static constexpr int BUCKET_MS = 5;                  // histogram granularity
     static constexpr int NBUCKETS = MAX_CUSHION_MS / BUCKET_MS;
     static constexpr int64_t BUCKET_NS = (int64_t)BUCKET_MS * 1000000LL;
@@ -291,13 +291,15 @@ public:
             // out on pre-sound silence and underrun the instant the first frame lands
             if (buffered == 0) mPrimeSilenceFrames = 0;
             else mPrimeSilenceFrames += (uint32_t)frames;
+            // Use 50% of target cushion for faster startup (reduced from 100%)
+            const size_t startThreshold = tuned / 2;
             // short sound can end before filling cushion; after holding partial data
-            // through 2x cushion of silence the sound is complete: play it
-            const uint32_t starveFrames = (uint32_t)(2 * tuned / mChannels);
+            // through 1.5x cushion of silence the sound is complete: play it (reduced from 2x)
+            const uint32_t starveFrames = (uint32_t)(startThreshold * 3 / mChannels);
             const bool starved = buffered > 0 && mPrimeSilenceFrames >= starveFrames;
             // also keep priming on empty ring: with 0 cushion `buffered < tuned` is
             // never true, so we'd otherwise underrun on every empty read between sounds
-            if (buffered == 0 || (buffered < tuned && !starved)) {
+            if (buffered == 0 || (buffered < startThreshold && !starved)) {
                 memset(out, 0, need * sizeof(int16_t));
                 return;
             }
@@ -364,10 +366,10 @@ private:
 
     static constexpr int64_t SLACK_NS = 10'000'000LL;    // ignore <10ms gaps (NTP shift, rounding)
     static constexpr int64_t MAX_GAP_NS = 750'000'000LL; // >750ms = discontinuity, re-anchor
-    static constexpr int TRIM_FLOOR_MS = 30;             // min trim point even for tiny cushion
-    static constexpr int TRIM_THROTTLE_MS = 2000;        // min spacing between trims, and after underrun
+    static constexpr int TRIM_FLOOR_MS = 20;             // reduced from 30ms for lower base latency
+    static constexpr int TRIM_THROTTLE_MS = 1500;        // reduced from 2000ms for more responsive trimming
     static constexpr int64_t TRIM_THROTTLE_NS = (int64_t)TRIM_THROTTLE_MS * 1'000'000LL;
-    static constexpr int TRIM_SUSTAIN_MS = 2000;         // backlog must exceed cap this long before trim
+    static constexpr int TRIM_SUSTAIN_MS = 1000;         // reduced from 2000ms for faster latency recovery
     static constexpr int64_t TRIM_SUSTAIN_NS = (int64_t)TRIM_SUSTAIN_MS * 1'000'000LL;
 
     const int mSampleRate;

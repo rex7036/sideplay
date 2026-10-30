@@ -25,7 +25,7 @@ object Prefs {
     const val AUDIO_CUSHION_MS = "audio_cushion_ms"; const val DEF_AUDIO_CUSHION_MS = 40
     // slider step 0..4 mapping to arrival-delay percentile the cushion targets;
     // lower = less latency, higher = more stable
-    const val AUDIO_ADAPTIVE_STEP = "audio_adaptive_step"; const val DEF_AUDIO_ADAPTIVE_STEP = 3
+    const val AUDIO_ADAPTIVE_STEP = "audio_adaptive_step"; const val DEF_AUDIO_ADAPTIVE_STEP = 1  // changed from 3 (95%) to 1 (85%) for lower latency
     val ADAPTIVE_PERCENTILES = intArrayOf(80, 85, 90, 95, 99)
     const val OBOE_BUFFER_FRAMES = "oboe_buffer_frames"; const val DEF_OBOE_BUFFER_FRAMES = 0
     const val ALAC_ENABLED = "alac_enabled"; const val DEF_ALAC_ENABLED = false
