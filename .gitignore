@@ -19,3 +19,5 @@ fastlane/README.md
 *.json.key
 play-service-account.json
 .wrangler/
+*.b64
+.codegraph/
