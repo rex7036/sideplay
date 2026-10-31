@@ -19,13 +19,13 @@ android {
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
-    if (localProps.containsKey("storeFile")) {
+    if (localProps.containsKey("RELEASE_STORE_FILE")) {
         signingConfigs {
             create("release") {
-                storeFile = file(localProps.getProperty("storeFile"))
-                storePassword = localProps.getProperty("storePassword")
-                keyAlias = localProps.getProperty("keyAlias")
-                keyPassword = localProps.getProperty("keyPassword")
+                storeFile = file(localProps.getProperty("RELEASE_STORE_FILE"))
+                storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD")
             }
         }
     }
