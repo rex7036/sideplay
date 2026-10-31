@@ -22,7 +22,7 @@ android {
     if (localProps.containsKey("RELEASE_STORE_FILE")) {
         signingConfigs {
             create("release") {
-                storeFile = file(localProps.getProperty("RELEASE_STORE_FILE"))
+                storeFile = rootProject.file(localProps.getProperty("RELEASE_STORE_FILE"))
                 storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
                 keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS")
                 keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD")
