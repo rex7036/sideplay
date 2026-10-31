@@ -19,6 +19,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 允许创建 release 和上传文件
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +52,13 @@ jobs:
           ./gradlew assembleRelease bundleRelease --stacktrace
           rm upload.jks local.properties
 
+      - name: List build outputs
+        run: |
+          echo "Listing build outputs..."
+          find ${{ env.main_project_module }}/build/outputs -type f -name "*.apk" -o -name "*.aab" || echo "No APK/AAB files found"
+          ls -la ${{ env.main_project_module }}/build/outputs/apk/release/ || echo "Release APK directory not found"
+          ls -la ${{ env.main_project_module }}/build/outputs/bundle/release/ || echo "Release bundle directory not found"
+
       - name: Publish (GitHub)
         uses: softprops/action-gh-release@v2
         with:
@@ -57,5 +66,6 @@ jobs:
           name: v${{ env.version }}
           tag_name: v${{ env.version }}
           files: |
-            ${{ env.main_project_module }}/build/outputs/apk/release/app-release.apk
-            ${{ env.main_project_module }}/build/outputs/bundle/release/app-release.aab
+            ${{ env.main_project_module }}/build/outputs/apk/release/*.apk
+            ${{ env.main_project_module }}/build/outputs/bundle/release/*.aab
+          fail_on_unmatched_files: false
