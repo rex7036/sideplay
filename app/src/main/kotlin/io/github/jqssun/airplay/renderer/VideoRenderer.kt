@@ -21,6 +21,8 @@ class VideoRenderer(ctx: Context) {
     private var currentH265 = false
     private var videoWidth = 0
     private var videoHeight = 0
+    private var codecConfiguredWidth = 0
+    private var codecConfiguredHeight = 0
     private var firstFrameQueued = false
 
     // stats
@@ -123,11 +125,22 @@ class VideoRenderer(ctx: Context) {
             _updateStats(data.size)
             if (videoWidth == 0 || videoHeight == 0) return
 
-            if (codec == null || isH265 != currentH265) {
+            // Check if we need to restart the codec
+            val needsRestart = codec == null ||
+                               isH265 != currentH265 ||
+                               _needsCodecRestart(videoWidth, videoHeight)
+
+            if (needsRestart) {
                 // a stale reference frame decodes to corruption, so wait for a keyframe to (re)start
                 if (!_isKeyframe(data, isH265)) {
-                    if (codec != null) stopCodec()
+                    if (codec != null) {
+                        Log.i(TAG, "Waiting for keyframe to restart codec (resolution change or codec switch)")
+                        stopCodec()
+                    }
                     return
+                }
+                if (codec != null) {
+                    Log.i(TAG, "Restarting codec: ${codecConfiguredWidth}x${codecConfiguredHeight} -> ${videoWidth}x${videoHeight}, H265: $isH265")
                 }
                 stopCodec()
             }
@@ -141,6 +154,24 @@ class VideoRenderer(ctx: Context) {
                 stopCodec()
             }
         }
+    }
+
+    private fun _needsCodecRestart(newWidth: Int, newHeight: Int): Boolean {
+        if (codec == null) return false
+        if (codecConfiguredWidth == 0 || codecConfiguredHeight == 0) return false
+
+        // Only restart if resolution changed significantly (more than 10% difference)
+        // This avoids restarts for minor resolution fluctuations
+        val widthDiff = kotlin.math.abs(newWidth - codecConfiguredWidth).toFloat() / codecConfiguredWidth
+        val heightDiff = kotlin.math.abs(newHeight - codecConfiguredHeight).toFloat() / codecConfiguredHeight
+
+        val needsRestart = widthDiff > 0.1f || heightDiff > 0.1f
+
+        if (needsRestart) {
+            Log.i(TAG, "Significant resolution change detected: ${codecConfiguredWidth}x${codecConfiguredHeight} -> ${newWidth}x${newHeight}")
+        }
+
+        return needsRestart
     }
 
     private fun _feedToCodec(data: ByteArray, ntpTimeNs: Long) {
@@ -190,6 +221,10 @@ class VideoRenderer(ctx: Context) {
         currentH265 = h265
         val mime = if (h265) DecoderSelector.HEVC else DecoderSelector.AVC
         val info = (if (h265) hevcDecoder else avcDecoder) ?: error("no decoder selected for $mime")
+
+        // Record the configured resolution
+        codecConfiguredWidth = videoWidth
+        codecConfiguredHeight = videoHeight
 
         firstFrameQueued = false
         try {
@@ -254,6 +289,8 @@ class VideoRenderer(ctx: Context) {
         _lastOutputFrameNs = 0L
         _ptsBaseUs = Long.MIN_VALUE
         _wallBaseNs = 0L
+        codecConfiguredWidth = 0
+        codecConfiguredHeight = 0
         codec?.let {
             try {
                 it.stop()

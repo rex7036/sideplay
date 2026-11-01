@@ -36,7 +36,7 @@ android {
         targetSdk = 36
         // fastlane passes -PversionCode=<next> so each Play upload gets a fresh code
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
-        versionName = "0.1.0"
+        versionName = "1.0.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {
