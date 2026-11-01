@@ -54,4 +54,12 @@ object Prefs {
     const val LANG_SYSTEM = "system"
     const val LANG_ENGLISH = "en"
     const val LANG_CHINESE = "zh"
+
+    // Log level options
+    const val LOG_LEVEL = "log_level"; const val DEF_LOG_LEVEL = "info"
+    const val LOG_LEVEL_ERROR = "error"
+    const val LOG_LEVEL_WARN = "warn"
+    const val LOG_LEVEL_INFO = "info"
+    const val LOG_LEVEL_DEBUG = "debug"
+    const val LOG_LEVEL_VERBOSE = "verbose"
 }

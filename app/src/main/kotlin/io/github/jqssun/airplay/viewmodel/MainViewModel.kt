@@ -103,6 +103,9 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     private val _currentLanguage = MutableStateFlow(prefs.getString(Prefs.APP_LANGUAGE, Prefs.DEF_APP_LANGUAGE) ?: Prefs.DEF_APP_LANGUAGE)
     val currentLanguage: StateFlow<String> = _currentLanguage.asStateFlow()
 
+    private val _logLevel = MutableStateFlow(prefs.getString(Prefs.LOG_LEVEL, Prefs.DEF_LOG_LEVEL) ?: Prefs.DEF_LOG_LEVEL)
+    val logLevel: StateFlow<String> = _logLevel.asStateFlow()
+
     private val _keepScreenOn = MutableStateFlow(prefs.getBoolean(Prefs.KEEP_SCREEN_ON, Prefs.DEF_KEEP_SCREEN_ON))
     val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
 
@@ -210,6 +213,10 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
     fun setLanguage(languageCode: String) {
         _currentLanguage.value = languageCode
         prefs.edit().putString(Prefs.APP_LANGUAGE, languageCode).apply()
+    }
+    fun setLogLevel(level: String) {
+        _logLevel.value = level
+        prefs.edit().putString(Prefs.LOG_LEVEL, level).apply()
     }
 
     // service binding

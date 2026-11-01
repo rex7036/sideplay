@@ -59,6 +59,23 @@ jobs:
           ls -la ${{ env.main_project_module }}/build/outputs/apk/release/ || echo "Release APK directory not found"
           ls -la ${{ env.main_project_module }}/build/outputs/bundle/release/ || echo "Release bundle directory not found"
 
+      - name: Rename APK and AAB files
+        run: |
+          cd ${{ env.main_project_module }}/build/outputs/apk/release
+          for file in *.apk; do
+            if [ -f "$file" ]; then
+              mv "$file" "sideplay-v${{ env.version }}.apk"
+              echo "Renamed $file to sideplay-v${{ env.version }}.apk"
+            fi
+          done
+          cd ../../../bundle/release
+          for file in *.aab; do
+            if [ -f "$file" ]; then
+              mv "$file" "sideplay-v${{ env.version }}.aab"
+              echo "Renamed $file to sideplay-v${{ env.version }}.aab"
+            fi
+          done
+
       - name: Publish (GitHub)
         uses: softprops/action-gh-release@v2
         with:
@@ -66,6 +83,6 @@ jobs:
           name: v${{ env.version }}
           tag_name: v${{ env.version }}
           files: |
-            ${{ env.main_project_module }}/build/outputs/apk/release/*.apk
-            ${{ env.main_project_module }}/build/outputs/bundle/release/*.aab
+            ${{ env.main_project_module }}/build/outputs/apk/release/sideplay-v${{ env.version }}.apk
+            ${{ env.main_project_module }}/build/outputs/bundle/release/sideplay-v${{ env.version }}.aab
           fail_on_unmatched_files: false

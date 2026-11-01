@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.ui.tv
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -55,6 +56,7 @@ data class TvSettingsState(
     val bootAutoStart: Boolean,
     val h265Enabled: Boolean,
     val currentLanguage: String = "system",
+    val currentLogLevel: String = "info",
 )
 
 data class TvTroubleshootingState(
@@ -73,14 +75,16 @@ fun TvSettingsScreen(
     onBootAutoStart: (Boolean) -> Unit,
     onH265: (Boolean) -> Unit,
     onLanguageChange: (String) -> Unit,
+    onLogLevelChange: (String) -> Unit,
     onOpenTroubleshooting: () -> Unit,
     onBack: () -> Unit,
 ) {
     var renaming by remember { mutableStateOf(false) }
     var selectingLanguage by remember { mutableStateOf(false) }
+    var selectingLogLevel by remember { mutableStateOf(false) }
     val firstRow = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstRow.requestFocusUntilLanded() }
-    BackHandler(enabled = !renaming && !selectingLanguage) { onBack() }
+    BackHandler(enabled = !renaming && !selectingLanguage && !selectingLogLevel) { onBack() }
 
     val context = LocalContext.current
 
@@ -109,6 +113,17 @@ fun TvSettingsScreen(
                 color = Color.White.copy(alpha = 0.7f)
             )
         }
+        SettingRow(
+            stringResource(R.string.tv_setting_log_level),
+            "setting_log_level",
+            description = stringResource(R.string.tv_setting_log_level_desc),
+            onClick = { selectingLogLevel = true }
+        ) {
+            Text(
+                getLogLevelDisplayName(context, state.currentLogLevel),
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        }
         SettingRow(stringResource(R.string.tv_troubleshooting), "setting_troubleshooting", onClick = onOpenTroubleshooting)
     }
 
@@ -119,6 +134,14 @@ fun TvSettingsScreen(
         onSelect = { lang ->
             selectingLanguage = false
             onLanguageChange(lang)
+        }
+    )
+    if (selectingLogLevel) LogLevelDialog(
+        currentLogLevel = state.currentLogLevel,
+        onDismiss = { selectingLogLevel = false },
+        onSelect = { level ->
+            selectingLogLevel = false
+            onLogLevelChange(level)
         }
     )
 }
@@ -217,6 +240,60 @@ private fun LanguageDialog(currentLanguage: String, onDismiss: () -> Unit, onSel
             }
         },
     )
+}
+
+@Composable
+private fun LogLevelDialog(currentLogLevel: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    val context = LocalContext.current
+    val logLevels = listOf(
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_ERROR to stringResource(R.string.log_level_error),
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_WARN to stringResource(R.string.log_level_warn),
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_INFO to stringResource(R.string.log_level_info),
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_DEBUG to stringResource(R.string.log_level_debug),
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_VERBOSE to stringResource(R.string.log_level_verbose),
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.tv_setting_log_level)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                logLevels.forEach { (level, name) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .tvFocus(RoundedCornerShape(8.dp))
+                            .clickable { onSelect(level) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (level == currentLogLevel) MaterialTheme.colorScheme.primary else Color.White
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.tvFocus()) {
+                Text(stringResource(R.string.tv_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun getLogLevelDisplayName(context: Context, logLevel: String): String {
+    return when (logLevel) {
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_ERROR -> context.getString(R.string.log_level_error)
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_WARN -> context.getString(R.string.log_level_warn)
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_INFO -> context.getString(R.string.log_level_info)
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_DEBUG -> context.getString(R.string.log_level_debug)
+        io.github.jqssun.airplay.Prefs.LOG_LEVEL_VERBOSE -> context.getString(R.string.log_level_verbose)
+        else -> context.getString(R.string.log_level_info)
+    }
 }
 
 @Composable

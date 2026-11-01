@@ -92,4 +92,13 @@
     <string name="language_system">跟随系统</string>
     <string name="language_english">English</string>
     <string name="language_chinese">简体中文</string>
+
+    <!-- Log level settings -->
+    <string name="tv_setting_log_level">日志等级</string>
+    <string name="tv_setting_log_level_desc">调试日志详细程度</string>
+    <string name="log_level_error">错误</string>
+    <string name="log_level_warn">警告</string>
+    <string name="log_level_info">信息</string>
+    <string name="log_level_debug">调试</string>
+    <string name="log_level_verbose">详细</string>
 </resources>
