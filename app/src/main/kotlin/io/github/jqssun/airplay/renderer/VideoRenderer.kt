@@ -23,6 +23,8 @@ class VideoRenderer(ctx: Context) {
     private var videoHeight = 0
     private var codecConfiguredWidth = 0
     private var codecConfiguredHeight = 0
+    private var maxConfiguredWidth = 0
+    private var maxConfiguredHeight = 0
     private var firstFrameQueued = false
 
     // stats
@@ -126,21 +128,26 @@ class VideoRenderer(ctx: Context) {
             if (videoWidth == 0 || videoHeight == 0) return
 
             // Check if we need to restart the codec
+            // Only restart if:
+            // 1. No codec exists
+            // 2. Codec type changed (H264 <-> H265)
+            // 3. New resolution exceeds configured maximum
             val needsRestart = codec == null ||
                                isH265 != currentH265 ||
-                               _needsCodecRestart(videoWidth, videoHeight)
+                               (maxConfiguredWidth > 0 && maxConfiguredHeight > 0 &&
+                                (videoWidth > maxConfiguredWidth || videoHeight > maxConfiguredHeight))
 
             if (needsRestart) {
                 // a stale reference frame decodes to corruption, so wait for a keyframe to (re)start
                 if (!_isKeyframe(data, isH265)) {
                     if (codec != null) {
-                        Log.i(TAG, "Waiting for keyframe to restart codec (resolution change or codec switch)")
+                        Log.i(TAG, "Waiting for keyframe to restart codec (codec switch or resolution exceeds max)")
                         stopCodec()
                     }
                     return
                 }
                 if (codec != null) {
-                    Log.i(TAG, "Restarting codec: ${codecConfiguredWidth}x${codecConfiguredHeight} -> ${videoWidth}x${videoHeight}, H265: $isH265")
+                    Log.i(TAG, "Restarting codec: max ${maxConfiguredWidth}x${maxConfiguredHeight}, new ${videoWidth}x${videoHeight}, H265: $isH265")
                 }
                 stopCodec()
             }
@@ -154,24 +161,6 @@ class VideoRenderer(ctx: Context) {
                 stopCodec()
             }
         }
-    }
-
-    private fun _needsCodecRestart(newWidth: Int, newHeight: Int): Boolean {
-        if (codec == null) return false
-        if (codecConfiguredWidth == 0 || codecConfiguredHeight == 0) return false
-
-        // Only restart if resolution changed significantly (more than 10% difference)
-        // This avoids restarts for minor resolution fluctuations
-        val widthDiff = kotlin.math.abs(newWidth - codecConfiguredWidth).toFloat() / codecConfiguredWidth
-        val heightDiff = kotlin.math.abs(newHeight - codecConfiguredHeight).toFloat() / codecConfiguredHeight
-
-        val needsRestart = widthDiff > 0.1f || heightDiff > 0.1f
-
-        if (needsRestart) {
-            Log.i(TAG, "Significant resolution change detected: ${codecConfiguredWidth}x${codecConfiguredHeight} -> ${newWidth}x${newHeight}")
-        }
-
-        return needsRestart
     }
 
     private fun _feedToCodec(data: ByteArray, ntpTimeNs: Long) {
@@ -222,26 +211,33 @@ class VideoRenderer(ctx: Context) {
         val mime = if (h265) DecoderSelector.HEVC else DecoderSelector.AVC
         val info = (if (h265) hevcDecoder else avcDecoder) ?: error("no decoder selected for $mime")
 
+        // Configure decoder for maximum expected resolution (4K) to avoid restarts
+        // when switching between different video resolutions
+        val configWidth = maxOf(videoWidth, 3840)
+        val configHeight = maxOf(videoHeight, 2160)
+
         // Record the configured resolution
-        codecConfiguredWidth = videoWidth
-        codecConfiguredHeight = videoHeight
+        codecConfiguredWidth = configWidth
+        codecConfiguredHeight = configHeight
+        maxConfiguredWidth = configWidth
+        maxConfiguredHeight = configHeight
 
         firstFrameQueued = false
         try {
-            _startWithLadder(info, mime, s, h265)
+            _startWithLadder(info, mime, s, h265, configWidth, configHeight)
         } catch (e: Exception) {
             // strict hw decoders reject configs beyond their real limits
-            val sw = selector.software(mime, videoWidth, videoHeight) ?: throw e
+            val sw = selector.software(mime, configWidth, configHeight) ?: throw e
             Log.w(TAG, "Hardware decoder failed, trying software fallback", e)
-            _startWithLadder(sw, mime, s, h265)
+            _startWithLadder(sw, mime, s, h265, configWidth, configHeight)
         }
-        Log.i(TAG, "Video codec started: $mime ${videoWidth}x${videoHeight} ($codecName)")
+        Log.i(TAG, "Video codec started: $mime configured=${configWidth}x${configHeight} actual=${videoWidth}x${videoHeight} ($codecName)")
     }
 
-    private fun _startWithLadder(info: MediaCodecInfo, mime: String, s: Surface, h265: Boolean) {
+    private fun _startWithLadder(info: MediaCodecInfo, mime: String, s: Surface, h265: Boolean, configWidth: Int, configHeight: Int) {
         var tryNum = 0
         while (true) {
-            val format = _format(mime, info)
+            val format = _format(mime, info, configWidth, configHeight)
             val more = selector.lowLatencyOptions(format, info, mime, tryNum)
             try {
                 _startDecoder(MediaCodec.createByCodecName(info.name), format, s, h265)
@@ -254,13 +250,13 @@ class VideoRenderer(ctx: Context) {
         }
     }
 
-    private fun _format(mime: String, info: MediaCodecInfo) = MediaFormat.createVideoFormat(mime, videoWidth, videoHeight).apply {
+    private fun _format(mime: String, info: MediaCodecInfo, configWidth: Int, configHeight: Int) = MediaFormat.createVideoFormat(mime, configWidth, configHeight).apply {
         setInteger(MediaFormat.KEY_FRAME_RATE, maxFps)
         if (selector.adaptive(info, mime)) {
-            setInteger(MediaFormat.KEY_MAX_WIDTH, videoWidth)
-            setInteger(MediaFormat.KEY_MAX_HEIGHT, videoHeight)
+            setInteger(MediaFormat.KEY_MAX_WIDTH, configWidth)
+            setInteger(MediaFormat.KEY_MAX_HEIGHT, configHeight)
         }
-        setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(videoWidth * videoHeight * 3 / 4, 1024 * 1024))
+        setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(configWidth * configHeight * 3 / 4, 1024 * 1024))
         if (enforceSdr) {
             setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
             setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
@@ -291,6 +287,8 @@ class VideoRenderer(ctx: Context) {
         _wallBaseNs = 0L
         codecConfiguredWidth = 0
         codecConfiguredHeight = 0
+        maxConfiguredWidth = 0
+        maxConfiguredHeight = 0
         codec?.let {
             try {
                 it.stop()
