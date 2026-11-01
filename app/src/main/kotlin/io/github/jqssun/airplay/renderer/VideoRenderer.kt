@@ -211,27 +211,32 @@ class VideoRenderer(ctx: Context) {
         val mime = if (h265) DecoderSelector.HEVC else DecoderSelector.AVC
         val info = (if (h265) hevcDecoder else avcDecoder) ?: error("no decoder selected for $mime")
 
-        // Configure decoder for maximum expected resolution (4K) to avoid restarts
-        // when switching between different video resolutions
-        val configWidth = maxOf(videoWidth, 3840)
-        val configHeight = maxOf(videoHeight, 2160)
+        // Configure decoder with adaptive resolution strategy:
+        // Use 1.5x of current resolution (rounded up) to allow some flexibility without excessive overhead
+        // This balances performance and adaptability better than always using 4K
+        val configWidth = ((videoWidth * 1.5).toInt() / 64 + 1) * 64  // Round up to multiple of 64
+        val configHeight = ((videoHeight * 1.5).toInt() / 64 + 1) * 64
+
+        // Cap at 4K to avoid excessive resource usage
+        val cappedWidth = minOf(configWidth, 3840)
+        val cappedHeight = minOf(configHeight, 2160)
 
         // Record the configured resolution
-        codecConfiguredWidth = configWidth
-        codecConfiguredHeight = configHeight
-        maxConfiguredWidth = configWidth
-        maxConfiguredHeight = configHeight
+        codecConfiguredWidth = cappedWidth
+        codecConfiguredHeight = cappedHeight
+        maxConfiguredWidth = cappedWidth
+        maxConfiguredHeight = cappedHeight
 
         firstFrameQueued = false
         try {
-            _startWithLadder(info, mime, s, h265, configWidth, configHeight)
+            _startWithLadder(info, mime, s, h265, cappedWidth, cappedHeight)
         } catch (e: Exception) {
             // strict hw decoders reject configs beyond their real limits
-            val sw = selector.software(mime, configWidth, configHeight) ?: throw e
+            val sw = selector.software(mime, cappedWidth, cappedHeight) ?: throw e
             Log.w(TAG, "Hardware decoder failed, trying software fallback", e)
-            _startWithLadder(sw, mime, s, h265, configWidth, configHeight)
+            _startWithLadder(sw, mime, s, h265, cappedWidth, cappedHeight)
         }
-        Log.i(TAG, "Video codec started: $mime configured=${configWidth}x${configHeight} actual=${videoWidth}x${videoHeight} ($codecName)")
+        Log.i(TAG, "Video codec started: $mime configured=${cappedWidth}x${cappedHeight} actual=${videoWidth}x${videoHeight} (${codecName})")
     }
 
     private fun _startWithLadder(info: MediaCodecInfo, mime: String, s: Surface, h265: Boolean, configWidth: Int, configHeight: Int) {

@@ -792,9 +792,17 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     }
 
     override fun onAudioTeardown() {
-        _setPlaying(false)
-        // leave audio mode so the tv returns to idle instead of showing a stale now-playing screen
-        if (AudioTeardown.leavesAudioMode(_mirroringActive.value, _videoPlaybackActive.value)) _setAudioOnly(false)
+        // AirPlay protocol may call audio_teardown during normal playback when switching
+        // audio modes or during brief interruptions. Instead of stopping playback entirely,
+        // we keep the session alive and let onAudioFormat re-establish audio when ready.
+        Log.i(TAG, "Audio teardown - keeping session alive, waiting for audio re-initialization")
+        // Don't call _setPlaying(false) here - it causes premature disconnection
+        // The session will naturally end when the client actually disconnects
+
+        // Only leave audio mode if we're not actively mirroring or playing video
+        if (AudioTeardown.leavesAudioMode(_mirroringActive.value, _videoPlaybackActive.value)) {
+            _setAudioOnly(false)
+        }
     }
 
     override fun onDacpId(dacpId: String, activeRemote: String) {
