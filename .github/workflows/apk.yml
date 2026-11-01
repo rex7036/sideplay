@@ -61,6 +61,7 @@ jobs:
 
       - name: Rename APK and AAB files
         run: |
+          # Rename APK files
           cd ${{ env.main_project_module }}/build/outputs/apk/release
           for file in *.apk; do
             if [ -f "$file" ]; then
@@ -68,7 +69,9 @@ jobs:
               echo "Renamed $file to sideplay-v${{ env.version }}.apk"
             fi
           done
-          cd ../../../bundle/release
+
+          # Rename AAB files
+          cd ${{ github.workspace }}/${{ env.main_project_module }}/build/outputs/bundle/release
           for file in *.aab; do
             if [ -f "$file" ]; then
               mv "$file" "sideplay-v${{ env.version }}.aab"
