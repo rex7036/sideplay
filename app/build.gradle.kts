@@ -12,6 +12,18 @@ val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
 }
 
+// Get version from git tag
+fun getGitVersion(): String {
+    return try {
+        val process = Runtime.getRuntime().exec("git describe --tags --always --dirty")
+        val version = process.inputStream.bufferedReader().readText().trim()
+        // Remove 'v' prefix if present (v1.0.5 -> 1.0.5)
+        if (version.startsWith("v")) version.substring(1) else version
+    } catch (e: Exception) {
+        "1.0.0-unknown"
+    }
+}
+
 val allAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
 android {
@@ -36,7 +48,7 @@ android {
         targetSdk = 36
         // fastlane passes -PversionCode=<next> so each Play upload gets a fresh code
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
-        versionName = "1.0.4"
+        versionName = getGitVersion()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {
