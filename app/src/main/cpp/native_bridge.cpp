@@ -4,6 +4,7 @@
 
 #include <jni.h>
 #include <string.h>
+#include <time.h>
 #include <stdlib.h>
 #include <memory>
 #include <string>
@@ -408,6 +409,35 @@ Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeServerAudioFormat(
         JNIEnv *env, jobject thiz, jlong handle, jint ct, jint spf) {
     server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
     if (ctx && ctx->cb_ctx.audio_engine) audio_engine_on_format(ctx->cb_ctx.audio_engine, ct, spf);
+}
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeServerAudioSyncDelayNs(
+        JNIEnv *env, jobject thiz, jlong handle, jlong maxAgeNs) {
+    server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
+    if (!ctx || !ctx->cb_ctx.audio_engine) return -1;
+    return (jlong)audio_engine_sync_delay_ns(ctx->cb_ctx.audio_engine, (int64_t)maxAgeNs);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeServerAudioSetMinDelayNs(
+        JNIEnv *env, jobject thiz, jlong handle, jlong minDelayNs) {
+    server_ctx_t *ctx = (server_ctx_t *)(intptr_t)handle;
+    if (ctx && ctx->cb_ctx.audio_engine)
+        audio_engine_set_min_delay_ns(ctx->cb_ctx.audio_engine, (int64_t)minDelayNs);
+}
+
+/* CLOCK_REALTIME - CLOCK_MONOTONIC: maps raop pts onto System.nanoTime() */
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_io_github_jqssun_airplay_bridge_NativeBridge_nativeRealtimeOffsetNs(
+        JNIEnv *env, jobject thiz) {
+    struct timespec rt, mt;
+    clock_gettime(CLOCK_MONOTONIC, &mt);
+    clock_gettime(CLOCK_REALTIME, &rt);
+    return (jlong)(((int64_t)rt.tv_sec - mt.tv_sec) * 1000000000LL + ((int64_t)rt.tv_nsec - mt.tv_nsec));
 }
 
 extern "C"

@@ -39,6 +39,13 @@ void audio_engine_pause(AudioEngine *engine);
 /* refresh + copy packed debug struct into dst; false if engine NULL or dstLen too small */
 bool audio_engine_get_debug(AudioEngine *engine, void *dst, size_t dstLen);
 
+/* smoothed delay from packet pts (CLOCK_REALTIME ns) to audible output; -1 if audio hasn't
+ * played within maxAgeNs. never blocks */
+int64_t audio_engine_sync_delay_ns(AudioEngine *engine, int64_t maxAgeNs);
+
+/* video sync floor: audio plays no earlier than pts + minDelayNs (0 = off); any thread */
+void audio_engine_set_min_delay_ns(AudioEngine *engine, int64_t minDelayNs);
+
 /* stop + destroy engine; no concurrent or later audio_engine_decode calls allowed */
 void audio_engine_destroy(AudioEngine *engine);
 

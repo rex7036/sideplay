@@ -117,9 +117,23 @@ struct AudioEngine {
         return true;
     }
 
+    int64_t syncDelayNs(int64_t maxAgeNs) {
+        if (!mRunning.load(std::memory_order_relaxed)) return -1;
+        // never block the video thread: a rebuild in progress just means "unknown" briefly
+        std::unique_lock<std::mutex> lk(mRebuildLock, std::try_to_lock);
+        if (!lk.owns_lock() || !mTimeline || !mOutputActive) return -1;
+        int64_t at = 0;
+        const int64_t d = mTimeline->syncDelayNs(&at);
+        if (d < 0 || at == 0 || monoNs() - at > maxAgeNs) return -1;
+        return d;
+    }
+
+    void setMinDelayNs(int64_t ns) { mMinDelayNs.store(ns, std::memory_order_relaxed); }
+
     // touches decoder: must not run concurrently with stop()
     void decode(const uint8_t *data, size_t len, int ct, int64_t ptsNs) {
         if (!mTimeline) return;
+        mTimeline->setMinDelayNs(mMinDelayNs.load(std::memory_order_relaxed));
         if (mPending.load(std::memory_order_relaxed)) {
             if (AudioConfig *raw = mPending.exchange(nullptr, std::memory_order_acquire)) {
                 std::unique_ptr<AudioConfig> c(raw);
@@ -181,7 +195,7 @@ private:
     std::mutex mRebuildLock;
     std::shared_ptr<TimelineBuffer> mTimeline; // guarded by mRebuildLock
     std::shared_ptr<AudioOutput> mOutput;      // guarded by mRebuildLock
-    bool mRunning = false;                     // requested output state, guarded by mRebuildLock
+    std::atomic<bool> mRunning{false};         // requested output state, written under mRebuildLock
     bool mOutputActive = false;                // actual output state, guarded by mRebuildLock
 
     LatencyReporter mDecLatency{"decode", *mLog};
@@ -205,6 +219,7 @@ private:
 
     AudioDebugData mDebug{};
     std::atomic<int32_t> mDecodeErrors{0};
+    std::atomic<int64_t> mMinDelayNs{0};       // video sync floor, applied to timeline on decode
 };
 
 AudioEngine *audio_engine_create(std::shared_ptr<LogSink> log, int sampleRate, int channels) {
@@ -245,6 +260,14 @@ void audio_engine_pause(AudioEngine *engine) {
 bool audio_engine_get_debug(AudioEngine *engine, void *dst, size_t dstLen) {
     if (!engine || !dst) return false;
     return engine->copyDebug(dst, dstLen);
+}
+
+int64_t audio_engine_sync_delay_ns(AudioEngine *engine, int64_t maxAgeNs) {
+    return engine ? engine->syncDelayNs(maxAgeNs) : -1;
+}
+
+void audio_engine_set_min_delay_ns(AudioEngine *engine, int64_t minDelayNs) {
+    if (engine) engine->setMinDelayNs(minDelayNs);
 }
 
 void audio_engine_destroy(AudioEngine *engine) {

@@ -12,4 +12,11 @@ static inline int64_t monoNs() {
     return (int64_t)ts.tv_sec * NS_PER_SEC + ts.tv_nsec;
 }
 
+// raop presentation timestamps (ntp_time_local) are in CLOCK_REALTIME ns
+static inline int64_t realNs() {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * NS_PER_SEC + ts.tv_nsec;
+}
+
 #endif  // AUDIO_TIME_H

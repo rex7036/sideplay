@@ -13,6 +13,7 @@ import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.media.AudioManager
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -71,11 +72,18 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private var nativeHandle = 0L
     private var nsdManager: NsdServiceManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    // wifi power save batches packets into bursts of 100ms+ and can starve the link long
+    // enough for the sender to give up: hold the radio awake while a client is connected
+    private var wifiLock: WifiManager.WifiLock? = null
     private var foregroundStarted = false
     private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
 
     val videoRenderer = VideoRenderer(this)
     val audioRenderer = AudioRenderer()
+
+    init {
+        videoRenderer.avSync = audioRenderer
+    }
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val airPlayVideoPlayer by lazy { AirPlayVideoPlayer(this) }
 
@@ -507,6 +515,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         nsdManager = null
         wakeLock?.release()
         wakeLock = null
+        _releaseWifiLock()
         videoRenderer.release()
         airPlayVideoPlayer.stop()
         mediaSession?.isActive = false
@@ -704,6 +713,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         _connectionCount.value++
         log("Client connected (${_connectionCount.value})")
         if (!firstConnection) return
+        _acquireWifiLock()
         // conn_init is only a tcp pre-auth signal. pin-required sessions must wait for
         // onDisplayPin, otherwise the server ui can move before the client pin is current
         if (requiresPin()) return
@@ -718,6 +728,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             _endVideoPlayback("AirPlay Video stopped (disconnect)")
             // last client gone: release audio output devices to save power
             audioRenderer.stop()
+            _releaseWifiLock()
             _audioOnly.value = false
             _lastVideoPollAt = 0
             _videoPollSuppressed = false
@@ -740,6 +751,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
             cancelOpenPrompt()
         }
         log("Client disconnected (${_connectionCount.value})")
+    }
+
+    @Synchronized
+    private fun _acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+        @Suppress("DEPRECATION")
+        val mode = if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        wifiLock = runCatching {
+            wm.createWifiLock(mode, "airplay:stream").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }.onFailure { Log.w(TAG, "wifi lock unavailable", it) }.getOrNull()
+    }
+
+    @Synchronized
+    private fun _releaseWifiLock() {
+        wifiLock?.let { if (it.isHeld) runCatching { it.release() } }
+        wifiLock = null
     }
 
     override fun onConnectionReset(reason: Int) {

@@ -43,6 +43,12 @@ object NativeBridge {
     external fun nativeServerAudioStart(handle: Long): Boolean
     external fun nativeServerAudioStop(handle: Long)
     external fun nativeServerAudioFormat(handle: Long, ct: Int, spf: Int)
+    // smoothed pts -> audible delay (ns) of the audio path; -1 if audio not playing within maxAgeNs
+    external fun nativeServerAudioSyncDelayNs(handle: Long, maxAgeNs: Long): Long
+    // video sync floor: audio plays no earlier than pts + minDelayNs (0 = off)
+    external fun nativeServerAudioSetMinDelayNs(handle: Long, minDelayNs: Long)
+    // CLOCK_REALTIME - CLOCK_MONOTONIC: raop pts (realtime ns) minus this = System.nanoTime() domain
+    external fun nativeRealtimeOffsetNs(): Long
     // fills direct buffer with packed debug snapshot; false if audio isn't running
     external fun nativeServerAudioDebug(handle: Long, buf: java.nio.ByteBuffer): Boolean
 }

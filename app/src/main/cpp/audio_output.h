@@ -25,9 +25,18 @@ public:
     OboeCallbacks(std::shared_ptr<TimelineBuffer> timeline, std::shared_ptr<LogSink> log)
         : mTimeline(std::move(timeline)), mLog(std::move(log)) {}
 
-    oboe::DataCallbackResult onAudioReady(oboe::AudioStream *, void *audioData,
+    oboe::DataCallbackResult onAudioReady(oboe::AudioStream *stream, void *audioData,
                                           int32_t numFrames) override {
         mTimeline->read(static_cast<int16_t *>(audioData), numFrames);
+        // device latency (mixer + HAL + hdmi sink) for a/v sync; timestamps are cheap but
+        // only meaningful every few hundred ms. unsupported backends keep the buffer estimate
+        mLatencyFrames += numFrames;
+        if (stream && mLatencyFrames >= stream->getSampleRate() / 4) {
+            mLatencyFrames = 0;
+            auto lat = stream->calculateLatencyMillis();
+            if (lat && lat.value() > 0 && lat.value() < 1000)
+                mTimeline->noteOutputLatencyNs((int64_t)(lat.value() * 1e6));
+        }
         return oboe::DataCallbackResult::Continue;
     }
 
@@ -39,6 +48,7 @@ private:
     std::shared_ptr<TimelineBuffer> mTimeline;
     std::shared_ptr<LogSink> mLog;
     std::weak_ptr<AudioOutput> mOwner;
+    int32_t mLatencyFrames = 0;  // callback-thread only: frames since last latency probe
 };
 
 /*

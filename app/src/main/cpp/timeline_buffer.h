@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -145,7 +146,7 @@ private:
     }
 
     static constexpr int MIN_CUSHION_MS = 0;             // algorithm already enforces effective floor
-    static constexpr int MAX_CUSHION_MS = 300;           // reduced from 1000ms to lower max latency
+    static constexpr int MAX_CUSHION_MS = 1000;          // ceiling only: tuner stays near the jitter percentile
     static constexpr int BUCKET_MS = 5;                  // histogram granularity
     static constexpr int NBUCKETS = MAX_CUSHION_MS / BUCKET_MS;
     static constexpr int64_t BUCKET_NS = (int64_t)BUCKET_MS * 1000000LL;
@@ -215,7 +216,24 @@ public:
           // throttled), 2x slack
           mRing(2 * capOf(mTracker.ceil()) + (size_t)sampleRate * TRIM_THROTTLE_MS / 1000 * channels) {}
 
-    void noteOutputBufferFrames(int frames) { mTracker.noteOutputBufferFrames(frames); }
+    void noteOutputBufferFrames(int frames) {
+        mTracker.noteOutputBufferFrames(frames);
+        mOutputBufferNs.store((int64_t)frames * NS_PER_SEC / mSampleRate, std::memory_order_relaxed);
+    }
+
+    // output: measured device latency (oboe timestamps), 0 = unknown -> buffer size estimate
+    void noteOutputLatencyNs(int64_t ns) { mOutputLatencyNs.store(ns, std::memory_order_relaxed); }
+
+    // any thread: playout delay floor relative to pts (0 = none). video sync uses it so audio
+    // never plays ahead of what the video decoder can show
+    void setMinDelayNs(int64_t ns) { mMinDelayNs.store(ns > 0 ? ns : 0, std::memory_order_relaxed); }
+
+    // any thread: smoothed delay from pts (CLOCK_REALTIME) to audible output, -1 if unknown;
+    // updatedMonoNs = monoNs() of last update
+    int64_t syncDelayNs(int64_t *updatedMonoNs) const {
+        if (updatedMonoNs) *updatedMonoNs = mSyncAtNs.load(std::memory_order_acquire);
+        return mSyncDelayNs.load(std::memory_order_relaxed);
+    }
 
     // producer: push samples
     void write(const int16_t *pcm, size_t samples, int64_t ptsNs) {
@@ -254,6 +272,7 @@ public:
             mMetrics.countDrop();
             return;
         }
+        updateSyncDelay(ptsNs);
         mRing.write(pcm, samples);
         mExpectedPtsNs = ptsNs + durNs;
     }
@@ -269,33 +288,36 @@ public:
         // after backlog stayed above cap for TRIM_SUSTAIN (skip transient spikes), at
         // most once per TRIM_THROTTLE, and not within that window of an underrun
         // (trimming while rebuilding cushion is counterproductive)
+        // backlog needed to honor the video sync floor sits on top of the jitter cushion
+        const size_t floorBacklog = mFloorBacklog.load(std::memory_order_relaxed);
         const size_t avail = mRing.available();
-        if (avail > capOf(tuned)) {
+        if (avail > capOf(tuned) + floorBacklog) {
             if (mAboveCapSinceNs == 0) mAboveCapSinceNs = now;
         } else {
             mAboveCapSinceNs = 0;
         }
         if (mAboveCapSinceNs != 0 && now - mAboveCapSinceNs >= TRIM_SUSTAIN_NS
                 && now - mLastTrimBlockNs >= TRIM_THROTTLE_NS) {
-            mRing.skip(avail - tuned);
+            mRing.skip(avail - (tuned + floorBacklog));
             mMetrics.countTrim();
             mLastTrimBlockNs = now;
             mAboveCapSinceNs = 0;
         }
 
         // prebuffer: hold output until cushion fills, builds jitter headroom
-        if (mPriming) {
+        if (mPriming.load(std::memory_order_relaxed)) {
             const size_t buffered = mRing.available();
             // time the wait only while holding partial data; reset on empty ring so the
             // producer gets the full window once a sound starts, otherwise we could time
             // out on pre-sound silence and underrun the instant the first frame lands
             if (buffered == 0) mPrimeSilenceFrames = 0;
             else mPrimeSilenceFrames += (uint32_t)frames;
-            // Use 50% of target cushion for faster startup (reduced from 100%)
-            const size_t startThreshold = tuned / 2;
+            // full cushion before starting: a half-filled one underruns on the first spike.
+            // with a video sync floor, hold until audio is late enough to match the picture
+            const size_t startThreshold = std::max(tuned, floorBacklog);
             // short sound can end before filling cushion; after holding partial data
-            // through 1.5x cushion of silence the sound is complete: play it (reduced from 2x)
-            const uint32_t starveFrames = (uint32_t)(startThreshold * 3 / mChannels);
+            // through 2x cushion of silence the sound is complete: play it
+            const uint32_t starveFrames = (uint32_t)(startThreshold * 2 / mChannels);
             const bool starved = buffered > 0 && mPrimeSilenceFrames >= starveFrames;
             // also keep priming on empty ring: with 0 cushion `buffered < tuned` is
             // never true, so we'd otherwise underrun on every empty read between sounds
@@ -303,14 +325,14 @@ public:
                 memset(out, 0, need * sizeof(int16_t));
                 return;
             }
-            mPriming = false;
+            mPriming.store(false, std::memory_order_relaxed);
             mPrimeSilenceFrames = 0;
         }
 
         const size_t got = mRing.read(out, need);
         if (got < need) {
             memset(out + got, 0, (need - got) * sizeof(int16_t));
-            mPriming = true;
+            mPriming.store(true, std::memory_order_relaxed);
             mLastTrimBlockNs = now;  // hold off trims while rebuilding
             mUnderran.store(true, std::memory_order_relaxed);  // producer re-anchors
             mMetrics.countUnderrun();
@@ -323,13 +345,13 @@ public:
 
     // rebuild prebuffer cushion before resuming, e.g. after output stream restart;
     // must not run concurrently with read()
-    void reprime() { mPriming = true; }
+    void reprime() { mPriming.store(true, std::memory_order_relaxed); }
 
     // drop buffered audio + rebuild cushion, so resume after pause doesn't play stale
     // tail; only while output callback is stopped (skip() is consumer-side)
     void flushAndReprime() {
         mRing.skip(mRing.available());
-        mPriming = true;
+        mPriming.store(true, std::memory_order_relaxed);
     }
 
     // debug snapshot: backlog + tuned cushion (ms) + counters; reads only atomics, any thread
@@ -354,6 +376,52 @@ private:
         return std::max(cushionSamples * 2, (size_t)mSampleRate * TRIM_FLOOR_MS / 1000 * mChannels);
     }
 
+    int64_t samplesToNs(size_t samples) const {
+        return (int64_t)(samples / mChannels) * NS_PER_SEC / mSampleRate;
+    }
+
+    size_t nsToSamples(int64_t ns) const {
+        return (size_t)(ns * mSampleRate / NS_PER_SEC) * mChannels;
+    }
+
+    int64_t outputLatencyNs() const {
+        const int64_t measured = mOutputLatencyNs.load(std::memory_order_relaxed);
+        return measured > 0 ? measured : mOutputBufferNs.load(std::memory_order_relaxed);
+    }
+
+    // producer, right before a packet enters the ring: its first sample plays once the
+    // backlog ahead of it has drained and it has passed the device, so
+    // delay = (now - pts) + backlog + device latency. publishes the smoothed value for
+    // video sync and pads silence when the video sync floor asks for more delay
+    void updateSyncDelay(int64_t ptsNs) {
+        const int64_t now = realNs();
+        const int64_t outNs = outputLatencyNs();
+        const int64_t transitNs = now - ptsNs + outNs;
+        int64_t delay = transitNs + samplesToNs(mRing.available());
+
+        const int64_t minDelay = mMinDelayNs.load(std::memory_order_relaxed);
+        const int64_t needNs = minDelay - transitNs;
+        mFloorBacklog.store(minDelay > 0 && needNs > 0 ? nsToSamples(needNs) : 0,
+                            std::memory_order_relaxed);
+        // floor raised mid-stream: add the missing delay at once rather than drifting.
+        // not while priming, the consumer is already holding output to reach the floor
+        const int64_t mono = monoNs();
+        if (minDelay > 0 && delay < minDelay - FLOOR_SLACK_NS
+                && !mPriming.load(std::memory_order_relaxed)
+                && mono - mLastFloorPadNs >= FLOOR_PAD_THROTTLE_NS) {
+            const int64_t padNs = std::min(minDelay - delay, MAX_FLOOR_PAD_NS);
+            writeSilenceFrames((size_t)(padNs * mSampleRate / NS_PER_SEC));
+            delay += padNs;
+            mLastFloorPadNs = mono;
+        }
+
+        // smooth packet-level noise, but follow real steps (trim, underrun, pad) at once
+        if (mDelayEmaNs < 0 || std::abs(delay - mDelayEmaNs) > SYNC_SNAP_NS) mDelayEmaNs = delay;
+        else mDelayEmaNs += (delay - mDelayEmaNs) / 16;
+        mSyncDelayNs.store(mDelayEmaNs, std::memory_order_relaxed);
+        mSyncAtNs.store(mono, std::memory_order_release);
+    }
+
     void writeSilenceFrames(size_t frames) {
         int16_t zeros[512] = {0};  // 256 stereo frames per chunk
         size_t samples = frames * mChannels;
@@ -366,24 +434,38 @@ private:
 
     static constexpr int64_t SLACK_NS = 10'000'000LL;    // ignore <10ms gaps (NTP shift, rounding)
     static constexpr int64_t MAX_GAP_NS = 750'000'000LL; // >750ms = discontinuity, re-anchor
-    static constexpr int TRIM_FLOOR_MS = 20;             // reduced from 30ms for lower base latency
-    static constexpr int TRIM_THROTTLE_MS = 1500;        // reduced from 2000ms for more responsive trimming
+    static constexpr int TRIM_FLOOR_MS = 30;
+    static constexpr int TRIM_THROTTLE_MS = 2000;        // each trim is an audible glitch
     static constexpr int64_t TRIM_THROTTLE_NS = (int64_t)TRIM_THROTTLE_MS * 1'000'000LL;
-    static constexpr int TRIM_SUSTAIN_MS = 1000;         // reduced from 2000ms for faster latency recovery
+    static constexpr int TRIM_SUSTAIN_MS = 2000;         // ignore transient backlog spikes
     static constexpr int64_t TRIM_SUSTAIN_NS = (int64_t)TRIM_SUSTAIN_MS * 1'000'000LL;
+    static constexpr int64_t FLOOR_SLACK_NS = 20'000'000LL;           // tolerated shortfall vs floor
+    static constexpr int64_t MAX_FLOOR_PAD_NS = 500'000'000LL;        // largest single silence pad
+    static constexpr int64_t FLOOR_PAD_THROTTLE_NS = 500'000'000LL;   // min spacing between pads
+    static constexpr int64_t SYNC_SNAP_NS = 40'000'000LL;             // bigger delay steps skip smoothing
 
     const int mSampleRate;
     const int mChannels;
     DelayTracker mTracker;               // owns cushion policy; read live each read()
     SpscRing mRing;
     TimelineMetrics mMetrics;
-    bool mPriming = true;                // stream start: buffer output to build cushion
+    std::atomic<bool> mPriming{true};    // stream start: buffer output to build cushion; consumer writes
     uint32_t mPrimeSilenceFrames = 0;    // consumer-only: silence frames output while priming with partial data
     int64_t mLastTrimBlockNs = 0;        // consumer-only: last trim/underrun time (trim throttle)
     int64_t mAboveCapSinceNs = 0;        // consumer-only: when backlog first exceeded cap (0 = under)
     std::atomic<bool> mUnderran{false};  // consumer->producer: underrun happened
 
     int64_t mExpectedPtsNs = 0;          // presentation time expected at write head
+
+    // a/v sync
+    std::atomic<int64_t> mOutputBufferNs{0};   // output buffer duration (latency fallback)
+    std::atomic<int64_t> mOutputLatencyNs{0};  // measured device latency, 0 = unknown
+    std::atomic<int64_t> mMinDelayNs{0};       // video sync floor for pts->audible delay
+    std::atomic<size_t> mFloorBacklog{0};      // producer->consumer: backlog samples the floor needs
+    std::atomic<int64_t> mSyncDelayNs{-1};     // producer->any: smoothed pts->audible delay
+    std::atomic<int64_t> mSyncAtNs{0};         // producer->any: monoNs() of last mSyncDelayNs update
+    int64_t mDelayEmaNs = -1;                  // producer-only
+    int64_t mLastFloorPadNs = 0;               // producer-only
 };
 
 #endif  // TIMELINE_BUFFER_H
